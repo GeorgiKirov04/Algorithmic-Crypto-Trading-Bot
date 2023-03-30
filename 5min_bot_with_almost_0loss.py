@@ -60,7 +60,7 @@ title = f'{exchange.id} {symbol}'
 
 # Define the number of minutes for the timeframe (in this case, 1 minute)
 timeframe = '5m'
-since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 95
+since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 75
 
 
 # Fetch the historical candlestick data
@@ -94,7 +94,7 @@ trend_down = False
 profit = 0
 loss = 0
 
-wallet = 1000
+wallet = 10000
 hold_all_btc_investments = 0
 
 profit_to_next_trade = 0
@@ -122,16 +122,12 @@ btc_bought = 0
 purchase_price = 0
 last_purchase_price = 0  # keep track of the last purchase price
 highest_candle_price=0
-
 num_buys = 0
-
-profit_ratio = 1.5
-percentage_of_stop_loss = 0.01
 
 for i in range(len(df)):
     if df['high'][i] > highest_candle_price:
-                   highest_candle_price = df['high'][i]
-                    
+                    highest_candle_price = df['high'][i]
+                    stop_loss_price = highest_candle_price - (0.01 * highest_candle_price)
                    
     # Check if MACD and signal lines have crossed above the zero line to indicate a bullish trend
     #if it gives me this error: IndexError: index 1500 is out of bounds for axis 0 with size 1500, remove: I-1 and make it just I
@@ -142,17 +138,17 @@ for i in range(len(df)):
         #stop_loss_price = purchase_price - (0.01 * purchase_price)
         # keep track of the highest candle price since the bu
         if trend_up and not in_position:
-            
+            profit_ratio = 1.5
+            percentage_of_stop_loss = 0.01
             
             purchase_price = df['low'][i+1] 
             
            # Stop loss is 2% below 50 day EMA
-            target_price = (1 + (profit_ratio/100)) * purchase_price
-            #stop_loss_price = highest_candle_price - (percentage_of_stop_loss * highest_candle_price)
-            ema_stop_loss_price = ema_50[i] - percentage_of_stop_loss * ema_50[i]
-          
+            target_price = ((profit_ratio/100)*purchase_price)+purchase_price
            
-           
+       
+
+            #stop_loss_price = ema_50[i] - percentage_of_stop_loss * ema_50[i]
             #stop_loss_price = highest_candle_price - percentage_of_stop_loss * highest_candle_price
             if max_buy_percentage != 0 :
                     purchase_amount = min((max_buy_percentage - btc_bought), buy_percent_of_trade) / purchase_price
@@ -168,7 +164,7 @@ for i in range(len(df)):
                     buy_signal.append(i)
                     num_buys+=1
                     in_position = True
-                    highest_candle_price=purchase_price
+                    #highest_candle_price=purchase_price
                    
        
 
@@ -183,15 +179,8 @@ for i in range(len(df)):
                 num_buys+=1
                 buy_signal.append(i) 
                 in_position = True  
-                highest_candle_price = purchase_price  
-        # if in_position:
-        #     if candle_stop_loss_price < ema_stop_loss_price:
-        #         stop_loss_price = candle_stop_loss_price
-        #         print('USED EMA')
-        #     else:
-        #         stop_loss_price = ema_stop_loss_price
-        #         print('USED CANDLE')
-        stop_loss_price = highest_candle_price - percentage_of_stop_loss * highest_candle_price
+                #highest_candle_price = purchase_price  
+          
     elif in_position and ((df['high'][i] >= target_price) or (df['low'][i] <= stop_loss_price)):
         sell_price = df['high'][i]
         sell_price_for_prof = df['high'][i]
@@ -209,7 +198,7 @@ for i in range(len(df)):
             sell_signal.append(i)
             
             print(f"Sold {btc_sold:.8f} BTC at {sell_price_for_prof:.2f} USDT each for a profit of: {profit:.2f} ")
-            
+  
         else:
             loss = btc_sold * (purchase_price - sell_price)
             wallet -= loss
@@ -218,10 +207,8 @@ for i in range(len(df)):
             max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
             max_buy_percentage -=loss
             print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT each for a loss of {loss:.2f} ")
-            
         # Set profit_to_next_trade to the total profit/loss
         in_position = False
-        
         num_buys=0
         # Reset last_purchase_price to allow buying at the same price after selling
              
