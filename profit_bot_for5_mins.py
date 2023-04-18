@@ -50,7 +50,7 @@ import mplfinance as mpf
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-
+from talib import BBANDS, RSI
 exchange = ccxt.kucoin()
 symbol = 'BTC/USDT'
 
@@ -60,7 +60,7 @@ title = f'{exchange.id} {symbol}'
 
 # Define the number of minutes for the timeframe (in this case, 1 minute)
 timeframe = '5m'
-since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 127
+since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 36 #32 #127
 
 
 # Fetch the historical candlestick data
@@ -74,16 +74,37 @@ df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 print(f"Dataframe length: {len(df)}")
 
 
+# df.set_index('timestamp', inplace=True)
+# ema_50 = df['close'].ewm(span=50).mean()
+
+# # Calculate the MACD indicator
+# ema12 = df['close'].ewm(span=12, adjust=False).mean()
+# ema50 = df['close'].ewm(span=50, adjust=False).mean()
+# macd = ema12 - ema50
+# macdsignal = macd.ewm(span=9, adjust=False).mean()
+# macdhist = macd - macdsignal
 df.set_index('timestamp', inplace=True)
-ema_50 = df['close'].ewm(span=50).mean()
+ema_200 = df['close'].ewm(span=200).mean()
 
 # Calculate the MACD indicator
 ema12 = df['close'].ewm(span=12, adjust=False).mean()
-ema50 = df['close'].ewm(span=50, adjust=False).mean()
-macd = ema12 - ema50
+ema26 = df['close'].ewm(span=26, adjust=False).mean()
+macd = ema12 - ema26
 macdsignal = macd.ewm(span=9, adjust=False).mean()
 macdhist = macd - macdsignal
 
+# Calculate Bollinger Bands
+# bb_length = 30
+# bb_mult = 2.0
+# upper, middle, lower = BBANDS(df['close'], timeperiod=bb_length, nbdevup=bb_mult, nbdevdn=bb_mult, matype=0)
+# df['BB_UPPER'] = upper
+# df['BB_MIDDLE'] = middle
+# df['BB_LOWER'] = lower
+
+# # Calculate RSI
+# rsi_length = 13
+# rsi_source = df['close']
+# rsi = RSI(rsi_source, timeperiod=rsi_length)
 
 # # Determine trend direction based on histogram bars
 trend_up = False
@@ -112,6 +133,9 @@ total_l=0
 buy_signal=[]
 sell_signal=[]
 
+hypothetical_buy=[]
+hypothetical_sell=[]
+
 in_position = False
 
 
@@ -131,11 +155,13 @@ percentage_of_stop_loss = 0.01
 for i in range(len(df)):
     if df['high'][i] > highest_candle_price:
                    highest_candle_price = df['high'][i]
-                    
-                   
+
+    # if rsi[i] < 25 and df['close'][i] < lower[i]  and df['close'][i] < middle[i]:
+    #     hypothetical_buy.append(i)        
+    #                                 
     # Check if MACD and signal lines have crossed above the zero line to indicate a bullish trend
     #if it gives me this error: IndexError: index 1500 is out of bounds for axis 0 with size 1500, remove: I-1 and make it just I
-    if macd[i] < 0 and macdsignal[i] < 0 and macd[i] > macdsignal[i] and macd[i-1] < macdsignal[i-1] and df['open'][i+1] > ema_50[i+1]  : 
+    if macd[i] < 0 and macdsignal[i] < 0 and macd[i] > macdsignal[i] and macd[i-1] < macdsignal[i-1] and df['open'][i] > ema_200[i] : 
         #in_position = False
         trend_up = True
         trend_down = False 
@@ -144,7 +170,7 @@ for i in range(len(df)):
         if trend_up and not in_position:
             
             
-            purchase_price = df['low'][i+1] 
+            purchase_price = df['open'][i] 
             
            # Stop loss is 2% below 50 day EMA
             target_price = (1 + (profit_ratio/100)) * purchase_price
@@ -171,10 +197,10 @@ for i in range(len(df)):
                    
        
 
-        if in_position and max_buy_percentage!=0 and  df['low'][i+1] !=last_purchase_price:
+        if in_position and max_buy_percentage!=0 and  df['open'][i] !=last_purchase_price:
                 if max_buy_percentage<=0 or max_buy_percentage<buy_percent_of_trade:
                      continue
-                purchase_price = df['low'][i+1] 
+                purchase_price = df['open'][i] 
                 btc_bought += purchase_amount
                 purchase_amount = min((max_buy_percentage - btc_bought), buy_percent_of_trade) / purchase_price
                 max_buy_percentage -= purchase_amount * purchase_price     
@@ -231,48 +257,15 @@ for i in range(len(df)):
 print(f'total profit: {total_p:.2f}')
 print(f'total loss: {total_l:.2f}')
 print(f'money in the wallet: {wallet:.2f}')
-# MAKE THE CODE BELOW THE COMPLETE OPOSITE OF THAT ONE ABOVE
 
-#       if macd[i] > 0 and macdsignal[i] > 0 and macd[i] < macdsignal[i] and macd[i-1] > macdsignal[i-1] and df['open'][i+1] > ema_50[i+1]:
-#         trend_up = True
-#         trend_down = False
-#         # Make a purchase of $200 Bitcoin
-#         purchase_price = df['low'][i+1]
-#         purchase_amount = money_to_buy / purchase_price
-        
-#         stop_loss_price = ema_50[i] - 0.02 * ema_50[i] # Stop loss is 2% below 50 day EMA
-
-#         target_price = ((profit_ratio/100)*purchase_price) + purchase_price
-            
-#         if trend_up:
-#             buy_signal.append(i)
-#             # Print purchase details
-#             print(f"Purchased {purchase_amount:.8f} BTC at {purchase_price:.2f} USDT each")
-        
-#             # Look for the sell signal
-#             for j in range(i, len(df)):
-#                 if df['close'][j] >= target_price:
-#                     # Sell at target price
-#                     sell_price = df['close'][j+1]
-#                     profit = sell_price * purchase_amount - money_to_buy
-#                     print(f"Sold {purchase_amount:.8f} BTC at {sell_price:.2f} USDT each, for a profit of +{profit:.2f} USDT")
-#                     sell_signal.append(j)
-#                     total_profit += profit
-#                     break
-#                 elif df['close'][j] <= stop_loss_price:
-#                     # Sell at stop loss price to minimize losses
-#                     sell_price = df['close'][j+1]
-#                     loss = money_to_buy - (sell_price * purchase_amount)
-#                     print(f"Sold {purchase_amount:.8f} BTC at {sell_price:.2f} USDT each, for a loss of -{loss:.2f} USDT")
-#                     sell_signal.append(j)
-#                     total_loss += loss
-#                     break
-# total_result = total_profit - total_loss
-# print(total_result)
-        
-
-
-addplot = [mpf.make_addplot(ema_50, color='orange'),
+# mpf.make_addplot(df['BB_UPPER'], color='b', width=0.75), 
+#          mpf.make_addplot(df['BB_LOWER'], color='b', width=0.75), 
+#          mpf.make_addplot(df['BB_MIDDLE'], color='orange', width=0.75),
+#          mpf.make_addplot(rsi, panel=2, color='purple', width=0.75),
+#          mpf.make_addplot(np.ones_like(rsi)*70, panel=2, color='gray', width=1, alpha=0.75, linestyle='--'),
+#          mpf.make_addplot(np.ones_like(rsi)*30, panel=2, color='gray', width=1, alpha=0.75, linestyle='--'),
+addplot = [
+           mpf.make_addplot(ema_200, color='red'),
            mpf.make_addplot(macd, panel=1, color='blue', ylabel='MACD', width=0.75, secondary_y=False),
            mpf.make_addplot(macdsignal, panel=1, color='orange', width=0.75, secondary_y=False),
            mpf.make_addplot(macdhist, type='bar', panel=1, color='purple', width=0.5, ylabel='Histogram', secondary_y=False),]
@@ -283,6 +276,9 @@ if len(buy_signal) > 0:
 if len(sell_signal) > 0:
     sell_signal_values = [df['high'][i] if i in sell_signal else np.nan for i in range(len(df))]
     addplot.append(mpf.make_addplot(sell_signal_values, type='scatter', marker='v', markersize=100, color='red', panel=0))
+# if len(hypothetical_buy) > 0:
+#     buy_signal_values = [df['low'][i] if i in hypothetical_buy else np.nan for i in range(len(df))]
+#     addplot.append(mpf.make_addplot(buy_signal_values, type='scatter', marker='^', markersize=100, color='purple', panel=0))
 
 # Plot the chart with the modified addplot list
 mpf.plot(df, type='candle', style=style, title=title, addplot=addplot)
