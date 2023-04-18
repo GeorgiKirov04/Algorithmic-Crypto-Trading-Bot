@@ -4,126 +4,101 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas_ta as ta
+import yfinance as yf
 
 
-# EXTRACTING DATA
+exchange = ccxt.kucoin()
+symbol = 'BTC/USDT'
 
-def get_historical_data(symbol, since):
-    exchange = ccxt.kucoin()
-    symbol = 'BTC/USDT'
+# Define parameters for the plot
+style = 'yahoo'
+title = f'{exchange.id} {symbol}'
 
-    # Define parameters for the plot
-    style = 'yahoo'
-    title = f'{exchange.id} {symbol}'
+# Define the number of minutes for the timeframe (in this case, 1 minute)
+timeframe = '5m'
+since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 50
 
-    # Define the number of minutes for the timeframe (in this case, 1 minute)
-    timeframe = '5m'
-    since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 128
+# Fetch the historical candlestick data
+ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since)
 
-    # Fetch the historical candlestick data
-    ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since)
-
-    # Convert the data into a pandas dataframe
-    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    return df
-
-df = get_historical_data('BTC/USDT', '2023-23-03')
-print(df)
-# SUPERTREND CALCULATION
-def get_supertrend(high, low, close, lookback, multiplier):
+# Convert the data into a pandas dataframe
+df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+df.set_index('timestamp', inplace=True)
+def Supertrend(df, atr_period, multiplier):
     
-    # ATR
+    high = df['high']
+    low = df['low']
+    close = df['close']
     
-    tr1 = pd.DataFrame(high - low)
-    tr2 = pd.DataFrame(abs(high - close.shift(1)))
-    tr3 = pd.DataFrame(abs(low - close.shift(1)))
-    frames = [tr1, tr2, tr3]
-    tr = pd.concat(frames, axis = 1, join = 'inner').max(axis = 1)
-    atr = tr.ewm(lookback).mean()
+    # calculate ATR
+    price_diffs = [high - low, 
+                   high - close.shift(), 
+                   close.shift() - low]
+    true_range = pd.concat(price_diffs, axis=1)
+    true_range = true_range.abs().max(axis=1)
+    # default ATR calculation in supertrend indicator
+    atr = true_range.ewm(alpha=1/atr_period,min_periods=atr_period).mean() 
+    # df['atr'] = df['tr'].rolling(atr_period).mean()
     
-    # H/L AVG AND BASIC UPPER & LOWER BAND
+    # HL2 is simply the average of high and low prices
+    hl2 = (high + low) / 2
+    # upperband and lowerband calculation
+    # notice that final bands are set to be equal to the respective bands
+    final_upperband = upperband = hl2 + (multiplier * atr)
+    final_lowerband = lowerband = hl2 - (multiplier * atr)
     
-    hl_avg = (high + low) / 2
-    upper_band = (hl_avg + multiplier * atr).dropna()
-    lower_band = (hl_avg - multiplier * atr).dropna()
+    # initialize Supertrend column to True
+    supertrend = [True] * len(df)
     
-    # FINAL UPPER BAND
-    
-    final_bands = pd.DataFrame(columns = ['upper', 'lower'])
-    final_bands.iloc[:,0] = [x for x in upper_band - upper_band]
-    final_bands.iloc[:,1] = final_bands.iloc[:,0]
-    
-    for i in range(len(final_bands)):
-        if i == 0:
-            final_bands.iloc[i,0] = 0
+    for i in range(1, len(df.index)):
+        curr, prev = i, i-1
+        
+        # if current close price crosses above upperband
+        if close[curr] > final_upperband[prev]:
+            supertrend[curr] = True
+        # if current close price crosses below lowerband
+        elif close[curr] < final_lowerband[prev]:
+            supertrend[curr] = False
+        # else, the trend continues
         else:
-            if (upper_band[i] < final_bands.iloc[i-1,0]) | (close[i-1] > final_bands.iloc[i-1,0]):
-                final_bands.iloc[i,0] = upper_band[i]
-            else:
-                final_bands.iloc[i,0] = final_bands.iloc[i-1,0]
-    
-    # FINAL LOWER BAND
-    
-    for i in range(len(final_bands)):
-        if i == 0:
-            final_bands.iloc[i, 1] = 0
-        else:
-            if (lower_band[i] > final_bands.iloc[i-1,1]) | (close[i-1] < final_bands.iloc[i-1,1]):
-                final_bands.iloc[i,1] = lower_band[i]
-            else:
-                final_bands.iloc[i,1] = final_bands.iloc[i-1,1]
-    
-    # SUPERTREND
-    
-    supertrend = pd.DataFrame(columns = [f'supertrend_{lookback}'])
-    supertrend.iloc[:,0] = [x for x in final_bands['upper'] - final_bands['upper']]
-    
-    for i in range(len(supertrend)):
-        if i == 0:
-            supertrend.iloc[i, 0] = 0
-        elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 0] and close[i] < final_bands.iloc[i, 0]:
-            supertrend.iloc[i, 0] = final_bands.iloc[i, 0]
-        elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 0] and close[i] > final_bands.iloc[i, 0]:
-            supertrend.iloc[i, 0] = final_bands.iloc[i, 1]
-        elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 1] and close[i] > final_bands.iloc[i, 1]:
-            supertrend.iloc[i, 0] = final_bands.iloc[i, 1]
-        elif supertrend.iloc[i-1, 0] == final_bands.iloc[i-1, 1] and close[i] < final_bands.iloc[i, 1]:
-            supertrend.iloc[i, 0] = final_bands.iloc[i, 0]
-    
-    supertrend = supertrend.set_index(upper_band.index)
-    supertrend = supertrend.dropna()[1:]
-    
-    # ST UPTREND/DOWNTREND
-    
-    upt = []
-    dt = []
-    close = close.iloc[len(close) - len(supertrend):]
-
-    for i in range(len(supertrend)):
-        if close[i] > supertrend.iloc[i, 0]:
-            upt.append(supertrend.iloc[i, 0])
-            dt.append(np.nan)
-        elif close[i] < supertrend.iloc[i, 0]:
-            upt.append(np.nan)
-            dt.append(supertrend.iloc[i, 0])
-        else:
-            upt.append(np.nan)
-            dt.append(np.nan)
+            supertrend[curr] = supertrend[prev]
             
-    st, upt, dt = pd.Series(supertrend.iloc[:, 0]), pd.Series(upt), pd.Series(dt)
-    upt.index, dt.index = supertrend.index, supertrend.index
+            # adjustment to the final bands
+            if supertrend[curr] == True and final_lowerband[curr] < final_lowerband[prev]:
+                final_lowerband[curr] = final_lowerband[prev]
+            if supertrend[curr] == False and final_upperband[curr] > final_upperband[prev]:
+                final_upperband[curr] = final_upperband[prev]
+
+        # to remove bands according to the trend direction
+        if supertrend[curr] == True:
+            final_upperband[curr] = np.nan
+        else:
+            final_lowerband[curr] = np.nan
     
-    return st, upt, dt
+    return pd.DataFrame({
+        'Supertrend': supertrend,
+        'Final Lowerband': final_lowerband,
+        'Final Upperband': final_upperband
+    }, index=df.index)
+    
+    
+atr_period = 10
+atr_multiplier = 3.0
 
-df['st'], df['s_upt'], df['st_dt'] = get_supertrend(df['high'], df['low'], df['close'], 10, 3)
-tsla = df[1:]
-print(tsla.head())
+supertrend = Supertrend(df, atr_period, atr_multiplier)
+df = df.join(supertrend)
 
-# SUPERTREND PLOT
 
-plt.plot(tsla['close'], linewidth = 2, label = 'CLOSING PRICE')
-plt.plot(tsla['st'], color = 'green', linewidth = 2, label = 'ST UPTREND 10,3')
-plt.plot(tsla['st_dt'], color = 'r', linewidth = 2, label = 'ST DOWNTREND 10,3')
-plt.legend(loc = 'upper left')
-plt.show()
+
+addplot = [
+            mpf.make_addplot(df['Final Lowerband'], type='line', color='g', width=1),
+           mpf.make_addplot(df['Final Upperband'], type='line', color='r', width=1),]
+
+
+mpf.plot(df, type='candle', style=style, title=title, addplot=addplot)
+
+# plt.plot(df['close'], label='Close Price')
+# plt.plot(df['Final Lowerband'], 'g', label = 'Final Lowerband')
+# plt.plot(df['Final Upperband'], 'r', label = 'Final Upperband')
+# plt.show()

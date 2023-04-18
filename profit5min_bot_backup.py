@@ -60,7 +60,7 @@ title = f'{exchange.id} {symbol}'
 
 # Define the number of minutes for the timeframe (in this case, 1 minute)
 timeframe = '5m'
-since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 128
+since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 36 #32 #127
 
 
 # Fetch the historical candlestick data
@@ -69,7 +69,7 @@ ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since)
 # Convert the data into a pandas dataframe
 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-
+df.set_index('timestamp', inplace=True)
 
 print(f"Dataframe length: {len(df)}")
 
@@ -83,7 +83,7 @@ print(f"Dataframe length: {len(df)}")
 # macd = ema12 - ema50
 # macdsignal = macd.ewm(span=9, adjust=False).mean()
 # macdhist = macd - macdsignal
-df.set_index('timestamp', inplace=True)
+
 ema_200 = df['close'].ewm(span=200).mean()
 
 # Calculate the MACD indicator
@@ -94,17 +94,17 @@ macdsignal = macd.ewm(span=9, adjust=False).mean()
 macdhist = macd - macdsignal
 
 # Calculate Bollinger Bands
-bb_length = 30
-bb_mult = 2.0
-upper, middle, lower = BBANDS(df['close'], timeperiod=bb_length, nbdevup=bb_mult, nbdevdn=bb_mult, matype=0)
-df['BB_UPPER'] = upper
-df['BB_MIDDLE'] = middle
-df['BB_LOWER'] = lower
+# bb_length = 30
+# bb_mult = 2.0
+# upper, middle, lower = BBANDS(df['close'], timeperiod=bb_length, nbdevup=bb_mult, nbdevdn=bb_mult, matype=0)
+# df['BB_UPPER'] = upper
+# df['BB_MIDDLE'] = middle
+# df['BB_LOWER'] = lower
 
-# Calculate RSI
-rsi_length = 13
-rsi_source = df['close']
-rsi = RSI(rsi_source, timeperiod=rsi_length)
+# # Calculate RSI
+# rsi_length = 13
+# rsi_source = df['close']
+# rsi = RSI(rsi_source, timeperiod=rsi_length)
 
 # # Determine trend direction based on histogram bars
 trend_up = False
@@ -151,12 +151,78 @@ num_buys = 0
 
 profit_ratio = 1.5
 percentage_of_stop_loss = 0.01
+def Supertrend(df, atr_period, multiplier):
+    
+    high = df['high']
+    low = df['low']
+    close = df['close']
+    
+    # calculate ATR
+    price_diffs = [high - low, 
+                   high - close.shift(), 
+                   close.shift() - low]
+    true_range = pd.concat(price_diffs, axis=1)
+    true_range = true_range.abs().max(axis=1)
+    # default ATR calculation in supertrend indicator
+    atr = true_range.ewm(alpha=1/atr_period,min_periods=atr_period).mean() 
+    # df['atr'] = df['tr'].rolling(atr_period).mean()
+    
+    # HL2 is simply the average of high and low prices
+    hl2 = (high + low) / 2
+    # upperband and lowerband calculation
+    # notice that final bands are set to be equal to the respective bands
+    final_upperband = upperband = hl2 + (multiplier * atr)
+    final_lowerband = lowerband = hl2 - (multiplier * atr)
+    
+    # initialize Supertrend column to True
+    supertrend = [True] * len(df)
+    
+    for i in range(1, len(df.index)):
+        curr, prev = i, i-1
+        
+        # if current close price crosses above upperband
+        if close[curr] > final_upperband[prev]:
+            supertrend[curr] = True
+        # if current close price crosses below lowerband
+        elif close[curr] < final_lowerband[prev]:
+            supertrend[curr] = False
+        # else, the trend continues
+        else:
+            supertrend[curr] = supertrend[prev]
+            
+            # adjustment to the final bands
+            if supertrend[curr] == True and final_lowerband[curr] < final_lowerband[prev]:
+                final_lowerband[curr] = final_lowerband[prev]
+            if supertrend[curr] == False and final_upperband[curr] > final_upperband[prev]:
+                final_upperband[curr] = final_upperband[prev]
+
+        # to remove bands according to the trend direction
+        if supertrend[curr] == True:
+            final_upperband[curr] = np.nan
+        else:
+            final_lowerband[curr] = np.nan
+    
+    return pd.DataFrame({
+        'Supertrend': supertrend,
+        'Final Lowerband': final_lowerband,
+        'Final Upperband': final_upperband
+    }, index=df.index)
+    
+    
+atr_period = 10
+atr_multiplier = 3.0
+
+supertrend = Supertrend(df, atr_period, atr_multiplier)
+df = df.join(supertrend)
+
 
 for i in range(len(df)):
     if df['high'][i] > highest_candle_price:
                    highest_candle_price = df['high'][i]
-    if rsi[i] < 25 and df['close'][i] < lower[i]  and df['close'][i] < middle[i]:
-        hypothetical_buy.append(i)                                        
+
+    # if rsi[i] < 25 and df['close'][i] < lower[i]  and df['close'][i] < middle[i]:
+    #     hypothetical_buy.append(i)        
+    #                                 
     # Check if MACD and signal lines have crossed above the zero line to indicate a bullish trend
     #if it gives me this error: IndexError: index 1500 is out of bounds for axis 0 with size 1500, remove: I-1 and make it just I
     if macd[i] < 0 and macdsignal[i] < 0 and macd[i] > macdsignal[i] and macd[i-1] < macdsignal[i-1] and df['open'][i] > ema_200[i] : 
@@ -256,13 +322,14 @@ print(f'total profit: {total_p:.2f}')
 print(f'total loss: {total_l:.2f}')
 print(f'money in the wallet: {wallet:.2f}')
 
-
-addplot = [mpf.make_addplot(df['BB_UPPER'], color='b', width=0.75), 
-         mpf.make_addplot(df['BB_LOWER'], color='b', width=0.75), 
-         mpf.make_addplot(df['BB_MIDDLE'], color='orange', width=0.75),
-         mpf.make_addplot(rsi, panel=2, color='purple', width=0.75),
-         mpf.make_addplot(np.ones_like(rsi)*70, panel=2, color='gray', width=1, alpha=0.75, linestyle='--'),
-         mpf.make_addplot(np.ones_like(rsi)*30, panel=2, color='gray', width=1, alpha=0.75, linestyle='--'),
+# mpf.make_addplot(df['BB_UPPER'], color='b', width=0.75), 
+#          mpf.make_addplot(df['BB_LOWER'], color='b', width=0.75), 
+#          mpf.make_addplot(df['BB_MIDDLE'], color='orange', width=0.75),
+#          mpf.make_addplot(rsi, panel=2, color='purple', width=0.75),
+#          mpf.make_addplot(np.ones_like(rsi)*70, panel=2, color='gray', width=1, alpha=0.75, linestyle='--'),
+#          mpf.make_addplot(np.ones_like(rsi)*30, panel=2, color='gray', width=1, alpha=0.75, linestyle='--'),
+addplot = [mpf.make_addplot(df['Final Lowerband'], type='line', color='g', width=1),
+           mpf.make_addplot(df['Final Upperband'], type='line', color='r', width=1),
            mpf.make_addplot(ema_200, color='red'),
            mpf.make_addplot(macd, panel=1, color='blue', ylabel='MACD', width=0.75, secondary_y=False),
            mpf.make_addplot(macdsignal, panel=1, color='orange', width=0.75, secondary_y=False),
@@ -274,9 +341,9 @@ if len(buy_signal) > 0:
 if len(sell_signal) > 0:
     sell_signal_values = [df['high'][i] if i in sell_signal else np.nan for i in range(len(df))]
     addplot.append(mpf.make_addplot(sell_signal_values, type='scatter', marker='v', markersize=100, color='red', panel=0))
-if len(hypothetical_buy) > 0:
-    buy_signal_values = [df['low'][i] if i in hypothetical_buy else np.nan for i in range(len(df))]
-    addplot.append(mpf.make_addplot(buy_signal_values, type='scatter', marker='^', markersize=100, color='purple', panel=0))
+# if len(hypothetical_buy) > 0:
+#     buy_signal_values = [df['low'][i] if i in hypothetical_buy else np.nan for i in range(len(df))]
+#     addplot.append(mpf.make_addplot(buy_signal_values, type='scatter', marker='^', markersize=100, color='purple', panel=0))
 
 # Plot the chart with the modified addplot list
 mpf.plot(df, type='candle', style=style, title=title, addplot=addplot)
