@@ -50,9 +50,9 @@ import mplfinance as mpf
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from binance.client import Client
 from talib import BBANDS, RSI
-
+import math
+import time
 exchange = ccxt.binance()
 symbol = 'BTC/USDT'
 
@@ -62,19 +62,19 @@ title = f'{exchange.id} {symbol}'
 
 # Define the number of minutes for the timeframe (in this case, 5 minutes)
 timeframe = '5m'
-since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 107#32 #127
+since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 250 #32 #127
 # Fetch the historical candlestick data
 
 # Fetch the historical candlestick data
 ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since)
 
-# Convert the df into a pandas dataframe
+# Convert the data into a pandas dataframe
 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 df.set_index('timestamp', inplace=True)
 
 print(f"Dataframe length: {len(df)}")
-# print(type(df['close']))
+
 
 ema_200 = df['close'].ewm(span=200).mean()
 
@@ -109,15 +109,25 @@ profit = 0
 loss = 0
 
 wallet = 10000
+hold_all_btc_investments = 0
 
+profit_to_next_trade = 0
 
+count = 0
 
+total_p = 0
+total_l = 0
+
+percentage_of_stop_loss=0
 total_p=0
 total_l=0
 
 # Determine if MACD line crossed signal line below zero line
 buy_signal=[]
 sell_signal=[]
+
+hypothetical_buy=[]
+hypothetical_sell=[]
 
 in_position = False
 
@@ -136,10 +146,7 @@ num_buys = 0
 profit_ratio = 1.5
 percentage_of_stop_loss = 0.01
 
-
-trading_fees=0.01
-
-def Supertrend(df, atr_period, multiplier):
+def Supertrend(df, atr_period, multiplier, ):
 
     high = df['high']
     low = df['low']
@@ -205,6 +212,17 @@ atr_multiplier = 1
 supertrend,  = Supertrend(df, atr_period, atr_multiplier,)
 df = df.join(supertrend)
 
+# order_book = exchange.fetch_order_book(symbol)
+# bid_price = order_book['bids'][0][0] if len(order_book['bids']) > 0 else None
+# ask_price = order_book['asks'][0][0] if len(order_book['asks']) > 0 else None
+
+# def update_spread():
+#     global spread
+#     buy_price = bid_price[0]
+#     sell_price = ask_price[0]
+#     spread = sell_price - buy_price
+
+
     
     # code for buying and selling based on spread
 for i in range(len(df)):
@@ -219,7 +237,20 @@ for i in range(len(df)):
     if df['high'][i] > highest_candle_price:
         highest_candle_price = df['high'][i]
 
-  
+       # Fetch the order book data for the symbol and calculate the spread
+    # order_book = exchange.fetch_order_book(symbol)
+    # ask_price = order_book['asks'][0][0]
+    # bid_price = order_book['bids'][0][0]
+    # spread = ask_price - bid_price
+
+    # # Print the spread for the current candle
+    # # print(f"Spread for candle {i}: {spread}")
+    # # print(f'Bid price is:{bid_price}')
+    # # Wait for a short time to avoid hitting API rate limits
+    # time.sleep(0.5)
+
+    # # Print the spread for the current candle
+    # print(f"Spread for candle {i}: {spread}")
     # Check if MACD and signal lines have crossed above the zero line to indicate a bullish trend
     if macd[i] < 0 and macdsignal[i] < 0 and macd[i] > macdsignal[i] and macd[i-1] < macdsignal[i-1] : # and df['open'][i] > ema_200[i]
         # 
@@ -235,34 +266,33 @@ for i in range(len(df)):
             target_price = (1 + (profit_ratio/100)) * purchase_price
             
             purchase_amount = min((max_buy_percentage - btc_bought), buy_percent_of_trade) / purchase_price
-            #calculate_trading_fee= purchase_amount*(1-trading_fees)
-            purchase_amount = purchase_amount*(1-trading_fees)
             btc_bought += purchase_amount
 
                     # Deduct purchased amount from max_buy_percentage
             max_buy_percentage -= purchase_amount * purchase_price
 
             last_purchase_price = purchase_price
-            
-            #print(f'This is what it would look like with a fee: {calculate_trading_fee}')
-            print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each")
+
+            print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each ")
+
+            buy_signal.append(i)
            
             num_buys+=1
             in_position = True
             highest_candle_price=purchase_price
-            buy_signal.append(i)
+
 
             if max_buy_percentage != 0 and trend_up:
                     purchase_amount = min((max_buy_percentage - btc_bought), buy_percent_of_trade) / purchase_price
-                    purchase_amount= purchase_amount*(1-trading_fees)
                     btc_bought += purchase_amount
 
                     # Deduct purchased amount from max_buy_percentage
                     max_buy_percentage -= purchase_amount * purchase_price
 
                     last_purchase_price = purchase_price
-                    
-                    print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each")
+
+                    print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each ")
+
                     buy_signal.append(i)
                     num_buys+=1
                     in_position = True
@@ -270,20 +300,18 @@ for i in range(len(df)):
 
 
 
-        # if in_position and max_buy_percentage!=0 and  df['open'][i] !=last_purchase_price and trend_up:
-        #         if max_buy_percentage<=0 or max_buy_percentage<buy_percent_of_trade:
-        #              continue
-        #         purchase_price = df['open'][i]
-        #         btc_bought += calculate_trading_fee
-        #         purchase_amount = min((max_buy_percentage - btc_bought), buy_percent_of_trade) / purchase_price
-        #         calculate_trading_fee= purchase_amount-(trading_fees*(purchase_amount*1))
-        #         max_buy_percentage -= purchase_amount * purchase_price
-        #         calculate_trading_fee= purchase_amount-(trading_fees*(purchase_amount*1))
-        #         print(f"Purchased {calculate_trading_fee:.8f} BTC at {purchase_price:.2f} USDT each")
-        #         num_buys+=1
-        #         buy_signal.append(i)
-        #         in_position = True
-        #         highest_candle_price = purchase_price
+        if in_position and max_buy_percentage!=0 and  df['open'][i] !=last_purchase_price and trend_up:
+                if max_buy_percentage<=0 or max_buy_percentage<buy_percent_of_trade:
+                     continue
+                purchase_price = df['open'][i]
+                btc_bought += purchase_amount
+                purchase_amount = min((max_buy_percentage - btc_bought), buy_percent_of_trade) / purchase_price
+                max_buy_percentage -= purchase_amount * purchase_price
+                print(f"Purchased {purchase_amount:.8f} BTC at {purchase_price:.2f} USDT each ")
+                num_buys+=1
+                buy_signal.append(i)
+                in_position = True
+                highest_candle_price = purchase_price
 
         stop_loss_price = highest_candle_price - (percentage_of_stop_loss * highest_candle_price)
         #stop_loss_price = ema_50[i] - percentage_of_stop_loss * ema_50[i]
@@ -301,18 +329,18 @@ for i in range(len(df)):
                 # Add the profit to max_buy_percentage
                 max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
                 max_buy_percentage +=profit
-               
                 sell_signal.append(i)
+
                 print(f"Sold {btc_sold:.8f} BTC at {sell_price_for_prof:.2f} USDT each for a profit of: {profit:.2f}. - Supertrend Succeded ")
             else:
                 loss = btc_sold * (purchase_price - sell_price)
                 wallet -= loss
                 total_l -= loss
-                
+                sell_signal.append(i)
                 max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
                 max_buy_percentage -=loss
                 print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT each for a loss of {loss:.2f}. - Supertrend failed")
-                sell_signal.append(i)
+      
         if df['high'][i] >= target_price:
             profit = btc_sold * (sell_price_for_prof - purchase_price)
             wallet += profit
@@ -321,19 +349,19 @@ for i in range(len(df)):
             # Add the profit to max_buy_percentage
             max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
             max_buy_percentage +=profit
-      
+            sell_signal.append(i)
 
             print(f"Sold {btc_sold:.8f} BTC at {sell_price_for_prof:.2f} USDT each for a profit of: {profit:.2f}. - Reached 1.5 profit")
-            sell_signal.append(i)
+
         elif df['high'][i]<stop_loss_price:
             loss = btc_sold * (purchase_price - sell_price)
             wallet -= loss
             total_l -= loss
-          
+            sell_signal.append(i)
             max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
             max_buy_percentage -=loss
             print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT each for a loss of {loss:.2f}. - Activated Stop Loss")
-            sell_signal.append(i)
+
         # Set profit_to_next_trade to the total profit/loss
         in_position = False
 
@@ -353,6 +381,12 @@ print(f'total profit: {total_p:.2f}')
 print(f'total loss: {total_l:.2f}')
 print(f'money in the wallet: {wallet:.2f}')
 
+# mpf.make_addplot(df['BB_UPPER'], color='b', width=0.75),
+#          mpf.make_addplot(df['BB_LOWER'], color='b', width=0.75),
+#          mpf.make_addplot(df['BB_MIDDLE'], color='orange', width=0.75),
+#          mpf.make_addplot(rsi, panel=2, color='purple', width=0.75),
+#          mpf.make_addplot(np.ones_like(rsi)*70, panel=2, color='gray', width=1, alpha=0.75, linestyle='--'),
+#          mpf.make_addplot(np.ones_like(rsi)*30, panel=2, color='gray', width=1, alpha=0.75, linestyle='--'),
 addplot = [mpf.make_addplot(df['Final Lowerband'], type='line', color='g', width=1),
            mpf.make_addplot(df['Final Upperband'], type='line', color='r', width=1),
            mpf.make_addplot(ema_200, color='red'),
@@ -366,7 +400,9 @@ if len(buy_signal) > 0:
 if len(sell_signal) > 0:
     sell_signal_values = [df['high'][i] if i in sell_signal else np.nan for i in range(len(df))]
     addplot.append(mpf.make_addplot(sell_signal_values, type='scatter', marker='v', markersize=100, color='red', panel=0))
-
+# if len(hypothetical_buy) > 0:
+#     buy_signal_values2 = [df['low'][i] if i in hypothetical_buy else np.nan for i in range(len(df))]
+#     addplot.append(mpf.make_addplot(buy_signal_values2, type='scatter', marker='^', markersize=100, color='purple', panel=0))
 
 
 
