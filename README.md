@@ -1,2 +1,2 @@
-# AI Crypto Trading Bot
+# Algorithmic Crypto Trading Bot
  Дипломен проект
