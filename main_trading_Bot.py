@@ -1,12 +1,14 @@
-import ccxt
 import pandas as pd
 import matplotlib.pyplot as plt
-import ta
 from binance.client import Client
 import numpy as np
-symbol="BTCTUSD"
+# import ccxt
+# import ta
+# import time
+# import mplfinance
+symbol="BTCUSDT"
 timeframe="5m"
-starting_date="10 april 2023"
+starting_date="1 january 2023"
 
 #get the data
 info = Client().get_historical_klines(symbol,timeframe,starting_date)
@@ -38,18 +40,19 @@ macdhist = macd - macdsignal
 wallet = 10000
 
 
-trading_fees = 0.00
+trading_fees = 0.000
 trade=[]
 ########### Profit/Loss
 profit = 0
 loss = 0
 
-profit_ratio = 1.5
-percentage_of_stop_loss= 0.01
+profit_ratio = 2.5
+percentage_of_stop_loss= 0.05
 
 total_p=0
 total_l=0
 
+profit_with_fees=0
 ########## Keeping track of the asset
 in_position = False
 
@@ -155,50 +158,53 @@ for i in range(len(data)):
 
         #stop_loss_price = purchase_price - (0.01 * purchase_price)
         # keep track of the highest candle price since the bu
+   
         if trend_up and not in_position:
-            purchase_price = data['open'][i]            
-           # Stop loss is 2% below 50 day EMA
-            target_price = (1 + (profit_ratio/100)) * purchase_price
-            
-            purchase_amount = buy_percent_of_trade/purchase_price
-            #calculate_trading_fee= purchase_amount*(1-trading_fees)
-            purchase_amount = purchase_amount*(1-trading_fees)
-            btc_bought += purchase_amount
-            
-            hold_the_fee = buy_percent_of_trade-(purchase_amount*purchase_price)
+                purchase_price = data['open'][i]            
+            # Stop loss is 2% below 50 day EMA
+                target_price = (1 + (profit_ratio/100)) * purchase_price
+                
+                purchase_amount = buy_percent_of_trade/purchase_price
+                #calculate_trading_fee= purchase_amount*(1-trading_fees)
+                purchase_amount = purchase_amount*(1-trading_fees)
+                btc_bought += purchase_amount
+                
+                hold_the_fee = buy_percent_of_trade-(purchase_amount*purchase_price)
 
-            wallet -= (purchase_amount * purchase_price) + hold_the_fee
-            last_purchase_price = purchase_price
-            
-            #print(f'This is what it would look like with a fee: {calculate_trading_fee}')
-            print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each")
-            trade.append({'date':data.index[i], 'side':'buy', 'price': purchase_price, 'amount': purchase_amount, 'usdt':buy_percent_of_trade, 'wallet':wallet})
-            num_buys+=1
-            in_position = True
-            highest_candle_price=purchase_price
-            
-            if wallet != 0 and trend_up:
-                    purchase_amount = buy_percent_of_trade/purchase_price
-                    purchase_amount= purchase_amount*(1-trading_fees)
-                    btc_bought += purchase_amount
+                wallet -= (purchase_amount * purchase_price) + hold_the_fee
+                last_purchase_price = purchase_price
+                
+                #print(f'This is what it would look like with a fee: {calculate_trading_fee}')
+                print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each")
+                trade.append({'date':data.index[i], 'side':'buy', 'price': purchase_price, 'amount': purchase_amount, 'usdt':purchase_amount*purchase_price, 'wallet':wallet})
+                num_buys+=1
+                in_position = True
+                highest_candle_price=purchase_price
+                
+                if wallet != 0 and trend_up  and num_buys<2:
+                        
+                        purchase_amount = buy_percent_of_trade/purchase_price
+                        purchase_amount= purchase_amount*(1-trading_fees)
+                        btc_bought += purchase_amount
 
-                    # Deduct purchased amount from max_buy_percentage
-                    hold_the_fee = buy_percent_of_trade-(purchase_amount*purchase_price)
+                        # Deduct purchased amount from max_buy_percentage
+                        hold_the_fee = buy_percent_of_trade-(purchase_amount*purchase_price)
 
-                    wallet -= (purchase_amount * purchase_price) + hold_the_fee
+                        wallet -= (purchase_amount * purchase_price) + hold_the_fee
 
-                    last_purchase_price = purchase_price
-                    
-                    print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each")
-                    trade.append({'date':data.index[i], 'side':'buy', 'price': purchase_price, 'amount': purchase_amount, 'usdt':buy_percent_of_trade, 'wallet':wallet})
-                    
-                    num_buys+=1
-                    in_position = True
-                    highest_candle_price=purchase_price
+                        last_purchase_price = purchase_price
+                        
+                        print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each")
+                        trade.append({'date':data.index[i], 'side':'buy', 'price': purchase_price, 'amount': purchase_amount, 'usdt':purchase_amount*purchase_price, 'wallet':wallet})
+                        
+                        num_buys+=1
+                        in_position = True
+                        highest_candle_price=purchase_price
 
 
 
-       
+
+        
         stop_loss_price = highest_candle_price - (percentage_of_stop_loss * highest_candle_price)
         #stop_loss_price = ema_50[i] - percentage_of_stop_loss * ema_50[i]
     elif in_position and ((data['high'][i] >= target_price) or (data['low'][i] <= stop_loss_price) or data['Supertrend'][i]==False):
@@ -208,8 +214,10 @@ for i in range(len(data)):
         if data['Supertrend'][i]==False and in_position:
             if data['high'][i]>purchase_price:
                 profit = btc_sold * (sell_price - purchase_price)
-                wallet += ((btc_sold*sell_price) )
-                wallet*=(1-trading_fees)
+                profit_with_fees= (btc_sold*sell_price)
+                profit_with_fees*=(1-trading_fees)
+                wallet += ((profit_with_fees) )
+                
                 total_p += profit
    
                 count_wins+=1
@@ -218,8 +226,10 @@ for i in range(len(data)):
                 trade.append({'date':data.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
             else:
                 loss = btc_sold * (purchase_price - sell_price)
-                wallet += ((btc_sold*sell_price) )
-                wallet*=(1-trading_fees)
+                profit_with_fees= (btc_sold*sell_price)
+                profit_with_fees*=(1-trading_fees)
+                wallet += ((profit_with_fees) )
+                
                 total_l -= loss
                 
                 count_loss+=1
@@ -229,8 +239,10 @@ for i in range(len(data)):
              
         if data['high'][i] >= target_price:
             profit = btc_sold * (sell_price - purchase_price)
-            wallet += ((btc_sold*sell_price) )
-            wallet*=(1-trading_fees)
+            profit_with_fees= (btc_sold*sell_price)
+            profit_with_fees*=(1-trading_fees)
+            wallet += ((profit_with_fees) )
+           
             total_p += profit
 
             count_wins+=1
@@ -240,8 +252,10 @@ for i in range(len(data)):
             
         elif data['high'][i]<stop_loss_price:
             loss = btc_sold * (purchase_price - sell_price)
-            wallet += ((btc_sold*sell_price) )
-            wallet*=(1-trading_fees)
+            profit_with_fees= (btc_sold*sell_price)
+            profit_with_fees*=(1-trading_fees)
+            wallet += ((profit_with_fees) )
+            
             total_l -= loss
             
             count_loss+=1
@@ -270,6 +284,57 @@ print(f'money in the wallet: {wallet:.2f}')
 print('')
 print(f'W:{count_wins}')
 print(f'L:{count_loss}')
+# pd.set_option('display.max_rows', None)
+# pd.set_option('display.max_columns', None)
 trade = pd.DataFrame(trade,columns=['date', 'side', 'price', 'amount', 'usdt', 'wallet'])
 trade=trade.round(8)
 print(trade)
+
+
+########################################------------Real Market---------------##############################################3
+
+# binance=ccxt.binance()
+# binance.requiredCredentials
+
+# authentification = {
+#     "apiKey": "Cp9fG8NEWwOmXL4B3UH1e6qMvoSVlUwUbzA1kMsBVoZ3bvayNPbSfrIoXEkMX4cD",
+#     "secret": "cjWBRjGc4GReLki17D55IWXUsEbXT5YZSTgP39u7N2lxtLVCbMAHJeWber4KKFSB",
+#     "password": "GeorgiVasilevKirov2004!!!",
+# }
+
+# binance = ccxt.binance(authentification)
+
+# coin="BTC/TUSD"
+
+# print("USDT", binance.fetch_balance()["USDT"])
+
+# binance.fetch_ticker(coin)
+
+
+
+# order_type="Market"
+# side= "buy"
+
+# current_price = (binance.fetch_ticker(coin)["ask"] + binance.fetch_ticker(coin)["bid"]) / 2
+# amount= xNumber
+
+
+# #BUY
+# binance.create_order(
+#     coin,
+#     order_type,
+#     side,
+#     amount
+# )
+
+# #SELL
+# order_type="Market"
+# side = "sell"
+# amount = xNumber
+
+# binance.create_order(
+#     coin,
+#     order_type,
+#     side,
+#     amount
+# )

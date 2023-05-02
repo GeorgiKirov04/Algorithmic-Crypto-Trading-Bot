@@ -2,13 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from binance.client import Client
 import numpy as np
-# import ccxt
-# import ta
-# import time
-# import mplfinance
-symbol="BTCUSDT"
+
+symbol="BTCTUSD"
 timeframe="5m"
-starting_date="1 january 2023"
+starting_date="15 march 2023"
 
 #get the data
 info = Client().get_historical_klines(symbol,timeframe,starting_date)
@@ -28,6 +25,8 @@ data['open'] = pd.to_numeric(data['open'])
 data['high'] = pd.to_numeric(data['high'])
 data['low'] = pd.to_numeric(data['low'])
 data['close'] = pd.to_numeric(data['close'])
+
+# ema_200 = data['close'].ewm(span=200).mean()
 
 ema12 = data['close'].ewm(span=12, adjust=False).mean()
 ema26 = data['close'].ewm(span=26, adjust=False).mean()
@@ -56,7 +55,6 @@ profit_with_fees=0
 ########## Keeping track of the asset
 in_position = False
 
-buying_btc=0
 btc_bought = 0
 purchase_price = 0
 last_purchase_price = 0  # keep track of the last purchase price
@@ -66,7 +64,7 @@ num_buys = 0
 
 count_wins=0
 count_loss=0
-print(data)
+
 
 def Supertrend(data, atr_period, multiplier):
 
@@ -134,11 +132,10 @@ atr_multiplier = 1
 supertrend,  = Supertrend(data, atr_period, atr_multiplier,)
 data = data.join(supertrend)
 
-
+print(data)
 # print(data)
 
 for i in range(len(data)):
-   
     buy_percent_of_trade = 0.3 * wallet
     trend_up=False
     trend_down=False
@@ -153,7 +150,7 @@ for i in range(len(data)):
 
   
     # Check if MACD and signal lines have crossed above the zero line to indicate a bullish trend
-    if macd[i] < 0 and macdsignal[i] < 0 and macd[i] > macdsignal[i] and macd[i-1] < macdsignal[i-1] : # and data['open'][i] > ema_200[i]
+    if   macd[i] > macdsignal[i] and macd[i-1] < macdsignal[i-1] : # #and data['open'][i] > ema_200[i]   macd[i] < 0 and macdsignal[i] < 0 and
         # 
 
         #stop_loss_price = purchase_price - (0.01 * purchase_price)
@@ -179,7 +176,7 @@ for i in range(len(data)):
                 trade.append({'date':data.index[i], 'side':'buy', 'price': purchase_price, 'amount': purchase_amount, 'usdt':purchase_amount*purchase_price, 'wallet':wallet})
                 num_buys+=1
                 in_position = True
-                highest_candle_price=purchase_price
+                highest_candle_price=0
                 
                 if wallet != 0 and trend_up  and num_buys<2:
                         
@@ -199,11 +196,7 @@ for i in range(len(data)):
                         
                         num_buys+=1
                         in_position = True
-                        highest_candle_price=purchase_price
-
-
-
-
+                        highest_candle_price=0
         
         stop_loss_price = highest_candle_price - (percentage_of_stop_loss * highest_candle_price)
         #stop_loss_price = ema_50[i] - percentage_of_stop_loss * ema_50[i]
@@ -291,50 +284,3 @@ trade=trade.round(8)
 print(trade)
 
 
-########################################------------Real Market---------------##############################################3
-
-# binance=ccxt.binance()
-# binance.requiredCredentials
-
-# authentification = {
-#     "apiKey": "Cp9fG8NEWwOmXL4B3UH1e6qMvoSVlUwUbzA1kMsBVoZ3bvayNPbSfrIoXEkMX4cD",
-#     "secret": "cjWBRjGc4GReLki17D55IWXUsEbXT5YZSTgP39u7N2lxtLVCbMAHJeWber4KKFSB",
-#     "password": "GeorgiVasilevKirov2004!!!",
-# }
-
-# binance = ccxt.binance(authentification)
-
-# coin="BTC/TUSD"
-
-# print("USDT", binance.fetch_balance()["USDT"])
-
-# binance.fetch_ticker(coin)
-
-
-
-# order_type="Market"
-# side= "buy"
-
-# current_price = (binance.fetch_ticker(coin)["ask"] + binance.fetch_ticker(coin)["bid"]) / 2
-# amount= xNumber
-
-
-# #BUY
-# binance.create_order(
-#     coin,
-#     order_type,
-#     side,
-#     amount
-# )
-
-# #SELL
-# order_type="Market"
-# side = "sell"
-# amount = xNumber
-
-# binance.create_order(
-#     coin,
-#     order_type,
-#     side,
-#     amount
-# )

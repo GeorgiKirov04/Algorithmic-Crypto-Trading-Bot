@@ -3,8 +3,8 @@
 # import time
 # import pandas as pd
 # # Initialize the exchange object
-# api_key = '63e202a27913d60001358478'
-# api_secret = '17272fac-ea80-4a67-ab6d-4cb2295da2be'
+# api_key = ''
+# api_secret = ''
 
 
 
@@ -54,7 +54,7 @@ from binance.client import Client
 from talib import BBANDS, RSI
 
 exchange = ccxt.binance()
-symbol = 'BTC/USDT'
+symbol = 'BTCTUSD'
 
 # Define parameters for the plot
 style = 'yahoo'
@@ -62,7 +62,7 @@ title = f'{exchange.id} {symbol}'
 
 # Define the number of minutes for the timeframe (in this case, 5 minutes)
 timeframe = '5m'
-since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 107#32 #127
+since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 50#32 #127
 # Fetch the historical candlestick data
 
 # Fetch the historical candlestick data
@@ -108,7 +108,7 @@ macdhist = macd - macdsignal
 profit = 0
 loss = 0
 
-wallet = 1000
+wallet = 10000
 
 
 
@@ -123,8 +123,8 @@ trade=[]
 in_position = False
 
 
-buy_percent_of_trade = 0.3 * wallet
-max_buy_percentage = 0.9 * wallet
+#buy_percent_of_trade = 0.3 * wallet
+
 
 buying_btc=0
 btc_bought = 0
@@ -138,9 +138,8 @@ profit_ratio = 1.5
 percentage_of_stop_loss = 0.01
 
 
-trading_fees=0.01
-
-buy_percent_of_trade_with_fee = buy_percent_of_trade *(1-trading_fees)
+trading_fees=0.00
+#trading fees fuck you up
 
 def Supertrend(df, atr_period, multiplier):
 
@@ -202,7 +201,7 @@ def Supertrend(df, atr_period, multiplier):
     }, index=df.index),
 
 
-atr_period = 10
+atr_period = 5
 atr_multiplier = 1
 
 supertrend,  = Supertrend(df, atr_period, atr_multiplier,)
@@ -211,6 +210,9 @@ df = df.join(supertrend)
  
     # code for buying and selling based on spread
 for i in range(len(df)):
+   
+    buy_percent_of_trade = 0.3 * wallet
+    buy_percent_of_trade_with_fee = buy_percent_of_trade *(1-trading_fees)
     trend_up=False
     trend_down=False
    
@@ -230,44 +232,42 @@ for i in range(len(df)):
         #stop_loss_price = purchase_price - (0.01 * purchase_price)
         # keep track of the highest candle price since the bu
         if trend_up and not in_position:
-
-
-            purchase_price = df['open'][i]
-            
+            purchase_price = df['open'][i]            
            # Stop loss is 2% below 50 day EMA
             target_price = (1 + (profit_ratio/100)) * purchase_price
             
-            purchase_amount = min((max_buy_percentage - btc_bought), buy_percent_of_trade) / purchase_price
+            purchase_amount = buy_percent_of_trade/purchase_price
             #calculate_trading_fee= purchase_amount*(1-trading_fees)
             purchase_amount = purchase_amount*(1-trading_fees)
             btc_bought += purchase_amount
-
-                    # Deduct purchased amount from max_buy_percentage
             
-            max_buy_percentage -= purchase_amount * purchase_price
+            hold_the_fee = buy_percent_of_trade-(purchase_amount*purchase_price)
+
+            wallet -= (purchase_amount * purchase_price) + hold_the_fee
             last_purchase_price = purchase_price
             
             #print(f'This is what it would look like with a fee: {calculate_trading_fee}')
             print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each")
-            trade.append({'date':df.index, 'side':'buy', 'price': purchase_price, 'amount': purchase_amount, 'usdt':buy_percent_of_trade_with_fee, 'wallet':max_buy_percentage})
+            trade.append({'date':df.index[i], 'side':'buy', 'price': purchase_price, 'amount': purchase_amount, 'usdt':buy_percent_of_trade_with_fee, 'wallet':wallet})
             num_buys+=1
             in_position = True
             highest_candle_price=purchase_price
             buy_signal.append(i)
 
-            if max_buy_percentage != 0 and trend_up:
-                    purchase_amount = min((max_buy_percentage - btc_bought), buy_percent_of_trade) / purchase_price
-                    
+            if wallet != 0 and trend_up:
+                    purchase_amount = buy_percent_of_trade/purchase_price
                     purchase_amount= purchase_amount*(1-trading_fees)
                     btc_bought += purchase_amount
 
                     # Deduct purchased amount from max_buy_percentage
-                    
-                    max_buy_percentage -= purchase_amount * purchase_price
+                    hold_the_fee = buy_percent_of_trade-(purchase_amount*purchase_price)
+
+                    wallet -= (purchase_amount * purchase_price) + hold_the_fee
+
                     last_purchase_price = purchase_price
                     
                     print(f"Purchased {purchase_amount} BTC at {purchase_price:.2f} USDT each")
-                    trade.append({'date':df.index, 'side':'buy', 'price': purchase_price, 'amount': round(purchase_amount, 4), 'usdt':buy_percent_of_trade_with_fee, 'wallet':max_buy_percentage})
+                    trade.append({'date':df.index[i], 'side':'buy', 'price': purchase_price, 'amount': round(purchase_amount, 4), 'usdt':buy_percent_of_trade_with_fee, 'wallet':wallet})
                     buy_signal.append(i)
                     num_buys+=1
                     in_position = True
@@ -294,54 +294,45 @@ for i in range(len(df)):
         #stop_loss_price = ema_50[i] - percentage_of_stop_loss * ema_50[i]
     elif in_position and ((df['high'][i] >= target_price) or (df['low'][i] <= stop_loss_price) or df['Supertrend'][i]==False):
         sell_price = df['high'][i]
-        sell_price_for_prof = df['high'][i]
         btc_sold = btc_bought
         btc_bought = 0
         if df['Supertrend'][i]==False and in_position:
             if df['high'][i]>purchase_price:
-                profit = btc_sold * (sell_price_for_prof - purchase_price)
-                wallet += profit
+                profit = btc_sold * (sell_price - purchase_price)
+                wallet += ((btc_sold*sell_price) )
+                wallet*=(1-trading_fees)
                 total_p += profit
-
-                # Add the profit to max_buy_percentage
-                max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
-                max_buy_percentage +=profit
-               
+   
                 sell_signal.append(i)
-                print(f"Sold {btc_sold:.8f} BTC at {sell_price_for_prof:.2f} USDT each for a profit of: {profit:.2f}. - Supertrend Succeded ")
-                trade.append({'date':df.index, 'side':'sell', 'price': purchase_price, 'amount': num_buys*purchase_amount, 'usdt':num_buys*(purchase_amount*purchase_price), 'wallet':wallet+profit})
+                print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT  for a profit of: {profit:.2f}. - Supertrend Succeded ")
+                trade.append({'date':df.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
             else:
                 loss = btc_sold * (purchase_price - sell_price)
-                wallet -= loss
+                wallet += ((btc_sold*sell_price) )
+                wallet*=(1-trading_fees)
                 total_l -= loss
                 
-                max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
-                max_buy_percentage -=loss
-                print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT each for a loss of {loss:.2f}. - Supertrend failed")
-                trade.append({'date':df.index, 'side':'sell', 'price': purchase_price, 'amount': num_buys*purchase_amount, 'usdt':num_buys*(purchase_amount*purchase_price), 'wallet':wallet-loss})
+                print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a loss of {loss:.2f}. - Supertrend failed")
+                trade.append({'date':df.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
                 sell_signal.append(i)
         if df['high'][i] >= target_price:
-            profit = btc_sold * (sell_price_for_prof - purchase_price)
-            wallet += profit
+            profit = btc_sold * (sell_price - purchase_price)
+            wallet += ((btc_sold*sell_price) )
+            wallet*=(1-trading_fees)
             total_p += profit
 
-            # Add the profit to max_buy_percentage
-            max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
-            max_buy_percentage +=profit
-      
 
-            print(f"Sold {btc_sold:.8f} BTC at {sell_price_for_prof:.2f} USDT each for a profit of: {profit:.2f}. - Reached 1.5 profit")
-            trade.append({'date':df.index, 'side':'sell', 'price': purchase_price, 'amount': num_buys*purchase_amount, 'usdt':num_buys*(purchase_amount*purchase_price), 'wallet':wallet+profit})
+            print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a profit of: {profit:.2f}. - Reached 1.5 profit")
+            trade.append({'date':df.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
             sell_signal.append(i)
         elif df['high'][i]<stop_loss_price:
             loss = btc_sold * (purchase_price - sell_price)
-            wallet -= loss
+            wallet += ((btc_sold*sell_price) )
+            wallet*=(1-trading_fees)
             total_l -= loss
           
-            max_buy_percentage+=num_buys*(purchase_amount*purchase_price)
-            max_buy_percentage -=loss
-            print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT each for a loss of {loss:.2f}. - Activated Stop Loss")
-            trade.append({'date':df.index, 'side':'sell', 'price': purchase_price, 'amount': num_buys*purchase_amount, 'usdt':num_buys*(purchase_amount*purchase_price), 'wallet':wallet-loss})
+            print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a loss of {loss:.2f}. - Activated Stop Loss")
+            trade.append({'date':df.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
             sell_signal.append(i)
         # Set profit_to_next_trade to the total profit/loss
         in_position = False
@@ -381,7 +372,7 @@ if len(sell_signal) > 0:
 
 
 
-
+print(df)
 # Plot the chart with the modified addplot list
 mpf.plot(df, type='candle', style=style, title=title, addplot=addplot)
 
