@@ -3,7 +3,8 @@
 # import time
 # import pandas as pd
 # # Initialize the exchange object
-
+# api_key = ''
+# api_secret = ''
 
 
 
@@ -47,12 +48,13 @@
 import ccxt
 import mplfinance as mpf
 import pandas as pd
+import matplotlib.pyplot as plt
 import numpy as np
-
-
+from binance.client import Client
+from talib import BBANDS, RSI
 
 exchange = ccxt.binance()
-symbol = 'BTCUSDT'
+symbol = 'BTCTUSD'
 
 # Define parameters for the plot
 style = 'yahoo'
@@ -60,7 +62,7 @@ title = f'{exchange.id} {symbol}'
 
 # Define the number of minutes for the timeframe (in this case, 5 minutes)
 timeframe = '5m'
-since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 50 #32 #127
+since = exchange.milliseconds() - 1000 * 60 * 60 * int(timeframe[:-1]) * 50#32 #127
 # Fetch the historical candlestick data
 
 # Fetch the historical candlestick data
@@ -83,11 +85,30 @@ macd = ema12 - ema26
 macdsignal = macd.ewm(span=9, adjust=False).mean()
 macdhist = macd - macdsignal
 
+
+
+
+
+# Calculate Bollinger Bands
+# bb_length = 30
+# bb_mult = 2.0
+# upper, middle, lower = BBANDS(df['close'], timeperiod=bb_length, nbdevup=bb_mult, nbdevdn=bb_mult, matype=0)
+# df['BB_UPPER'] = upper
+# df['BB_MIDDLE'] = middle
+# df['BB_LOWER'] = lower
+
+# # Calculate RSI
+# rsi_length = 13
+# rsi_source = df['close']
+# rsi = RSI(rsi_source, timeperiod=rsi_length)
+
+
+
 # Calculate the balance, profit, and loss
 profit = 0
 loss = 0
 
-wallet = 1000
+wallet = 10000
 
 
 
@@ -180,7 +201,7 @@ def Supertrend(df, atr_period, multiplier):
     }, index=df.index),
 
 
-atr_period = 10
+atr_period = 5
 atr_multiplier = 1
 
 supertrend,  = Supertrend(df, atr_period, atr_multiplier,)
@@ -195,23 +216,23 @@ for i in range(len(df)):
     trend_up=False
     trend_down=False
    
-    if  df['Supertrend'][i] == True:
-            trend_up=True
-    elif  df['Supertrend'][i] == False:
-            trend_down=True
+    if df['Supertrend'][i] == True:
+        trend_up=True
+    else:
+        trend_down=True
 
     if df['high'][i] > highest_candle_price:
         highest_candle_price = df['high'][i]
 
   
     # Check if MACD and signal lines have crossed above the zero line to indicate a bullish trend
-    if   macd[i] > macdsignal[i] and macd[i-1] < macdsignal[i-1]  : # 
+    if macd[i] < 0 and macdsignal[i] < 0 and macd[i] > macdsignal[i] and macd[i-1] < macdsignal[i-1] : # and df['open'][i] > ema_200[i]
         # 
 
         #stop_loss_price = purchase_price - (0.01 * purchase_price)
         # keep track of the highest candle price since the bu
         if trend_up and not in_position:
-            purchase_price = df['open'][i]          
+            purchase_price = df['open'][i]            
            # Stop loss is 2% below 50 day EMA
             target_price = (1 + (profit_ratio/100)) * purchase_price
             
@@ -271,12 +292,12 @@ for i in range(len(df)):
 
         stop_loss_price = highest_candle_price - (percentage_of_stop_loss * highest_candle_price)
         #stop_loss_price = ema_50[i] - percentage_of_stop_loss * ema_50[i]
-    elif in_position and ((df['high'][i] >= target_price) or (df['low'][i] <= stop_loss_price) or (df['Supertrend'][i]==False)):
-        sell_price = df['close'][i] 
+    elif in_position and ((df['high'][i] >= target_price) or (df['low'][i] <= stop_loss_price) or df['Supertrend'][i]==False):
+        sell_price = df['high'][i]
         btc_sold = btc_bought
         btc_bought = 0
-        if (df['Supertrend'][i]==False ) and in_position:
-            if df['close'][i] >purchase_price:
+        if df['Supertrend'][i]==False and in_position:
+            if df['high'][i]>purchase_price:
                 profit = btc_sold * (sell_price - purchase_price)
                 wallet += ((btc_sold*sell_price) )
                 wallet*=(1-trading_fees)
@@ -304,7 +325,7 @@ for i in range(len(df)):
             print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a profit of: {profit:.2f}. - Reached 1.5 profit")
             trade.append({'date':df.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
             sell_signal.append(i)
-        elif df['open'][i]<stop_loss_price:
+        elif df['high'][i]<stop_loss_price:
             loss = btc_sold * (purchase_price - sell_price)
             wallet += ((btc_sold*sell_price) )
             wallet*=(1-trading_fees)
@@ -342,13 +363,16 @@ addplot = [mpf.make_addplot(df['Final Lowerband'], type='line', color='g', width
            mpf.make_addplot(macdsignal, panel=1, color='orange', width=0.75, secondary_y=False),
            mpf.make_addplot(macdhist, type='bar', panel=1, color='purple', width=0.5, ylabel='Histogram', secondary_y=False),]
 
-if len(buy_signal) > 0:  
+if len(buy_signal) > 0:
     buy_signal_values = [df['low'][i] if i in buy_signal else np.nan for i in range(len(df))]
     addplot.append(mpf.make_addplot(buy_signal_values, type='scatter', marker='^', markersize=100, color='green', panel=0))
 if len(sell_signal) > 0:
     sell_signal_values = [df['high'][i] if i in sell_signal else np.nan for i in range(len(df))]
     addplot.append(mpf.make_addplot(sell_signal_values, type='scatter', marker='v', markersize=100, color='red', panel=0))
 
+
+
+print(df)
 # Plot the chart with the modified addplot list
 mpf.plot(df, type='candle', style=style, title=title, addplot=addplot)
 

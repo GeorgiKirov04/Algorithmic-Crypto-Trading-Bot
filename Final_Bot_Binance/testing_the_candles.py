@@ -1,27 +1,48 @@
 from binance import Client
-from json import load
 import credits, pprint, websocket, json, requests
 import pandas as pd
 import numpy as np
-
-
+# import ccxt
+# import time
 api_key = credits.apy_key
 api_secret = credits.api_secret
 
 client = Client(api_key, api_secret)
+
 account=client.get_account()
 balances = account['balances']
 
 symbol = 'BTCTUSD'
-interval = '3m'
-
 url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
 
-symbol_for_websocket = 'btctusd'
+class TradingVariables:
+    def __init__(self):
+        self.wallet = 10000
 
+        self.profit = 0
+        self.loss = 0
+        self.total_profit = 0
+        self.total_loss = 0
+        self.count_wins = 0
+        self.count_loss = 0
 
+        self.profit_ratio = 1.5              
+        self.percentage_of_stop_loss = 0.01
+        self.stop_loss = 0                     
+        self.target_price = 0
+        self.count_for_shortage = 0
+        
+        self.purchase_price = 0
+        self.quantity = 0
+        self.buy_percentage_of_trade = 0
+        self.btc_bought = 0
+        self.highest_candle_price = 0
+        self.num_buys = 0
+        
+        self.closed_candle_on_buy  = True
+        self.trade = []
 def getminutedata(symbol):
-    frame = pd.DataFrame(client.get_historical_klines(symbol, '3m', '1 month ago EET'))
+    frame = pd.DataFrame(client.get_historical_klines(symbol, '3m', '1 week ago EET')) # / 5 days - the lower the time period, the more accurate macd
     frame = frame.iloc[:,:5]
     frame.columns = ['time', 'open', 'high', 'low', 'close']
     frame = frame.set_index('time')
@@ -29,10 +50,10 @@ def getminutedata(symbol):
     frame = frame.astype(float)
 
     return frame
-
 data = getminutedata(symbol)
 
-def calculate_macd(data):
+
+def calculate_macd(data: pd.DataFrame):
     slow=26
     fast=12
     signal=9
@@ -42,8 +63,7 @@ def calculate_macd(data):
     signal_line = macd.ewm(span=signal, adjust=False).mean()
     # histogram = macd - signal_line
     return pd.DataFrame({'MACD': macd, 'Signal Line': signal_line})
-
-def Supertrend(data, atr_period, multiplier):
+def Supertrend(data: pd.DataFrame, atr_period, multiplier):
 
     high = data['high']
     low = data['low']
@@ -98,51 +118,19 @@ def Supertrend(data, atr_period, multiplier):
 
     return pd.DataFrame({'Supertrend': supertrend}, index=data.index)
 
-
 atr_period = 10
 atr_multiplier = 1
 
 
-# data = data.join(supertrend)
-macd_data = calculate_macd(data)
-data_to_learn = getminutedata(symbol)
-supertrend  = Supertrend(data, atr_period, atr_multiplier)
-
-##########profit/stop_loss
-profit_ratio = 2.5              
-percentage_of_stop_loss= 0.05   #done
-stop_loss=0                     #done
-target_price = 0
-
-profit = 0
-loss = 0
-count_wins = 0
-count_loss = 0
-purchase_price = 0
-quantity = 0
-##########profit/stop_loss
-
-#####position
-buy_percentage_of_trade=0   #done
-
-#####position
-
-######keep track of the trade
-
-btc_bought = 0  #done
-
-purchase_price = 0
-
-highest_candle_price=0  #done
-
-num_buys = 0  #done
-
-trade=[]
-
-wallet = 10000
-#######keep tgrack of the trade 
-
+trading_variables = TradingVariables()
+supertrend = Supertrend(data,atr_period,atr_multiplier)
+macd = calculate_macd(data)
 last_row = data.iloc[-1]
+
+
+symbol_for_websocket = 'btctusd'
+interval = '3m'
+
 SOCKET = f"wss://stream.binance.com:9443/ws/{symbol_for_websocket}@kline_{interval}"
 
 def on_open(ws):
@@ -152,35 +140,12 @@ def on_close(ws):
     print('closed connection')
 
 def on_message(ws,message):
-    global last_row, data, supertrend, atr_multiplier, atr_period, macd_data
-
-    global highest_candle_price, buy_percentage_of_trade, balances
-
-    global trend_up, trend_down, stop_loss
-
-    global profit_ratio, num_buys, btc_bought
-
-    global profit, loss, count_loss, count_wins, target_price, purchase_price, quantity
-
-    response = requests.get(url)
-    data_for_price = response.json()
-    price = float(data_for_price["price"])
-    # print(f"Current BTCTUSD price: {price}")
+    global data, supertrend, trading_variables
+    global trend_up, trend_down
 
     json_message = json.loads(message)
     kline = json_message['k']
- 
-    last_row.name = pd.Timestamp(int(kline['t']), unit='ms')
-    last_row['open'] = float(kline['o'])
-    last_row['high'] = float(kline['h'])
-    last_row['low'] = float(kline['l'])
-    last_row['close'] = float(kline['c'])
 
-    # Update the last row of the dataframe with the new data
-    data.iloc[-1] = last_row
-   
-    supertrend = Supertrend(data, atr_period, atr_multiplier)
-    macd_data = calculate_macd(data)
     if kline['x'] :
         # Create a new row with the kline stats
         new_row = pd.Series({
@@ -193,140 +158,158 @@ def on_message(ws,message):
         # Concatenate the new row with the existing dataframe
         data = pd.concat([data, new_row.to_frame().T])
 
-        supertrend = Supertrend(data, atr_period, atr_multiplier)
-        macd_data = calculate_macd(data) 
+    data.loc[data.index[-1], ['open', 'high', 'low', 'close']] = [
+            float(kline['o']),
+            float(kline['h']),
+            float(kline['l']),
+            float(kline['c'])]
+    
+    response = requests.get(url)
+    data_for_price = response.json()
+    price = float(data_for_price["price"])
+    # print(f"Current BTCTUSD price: {price}")
 
-    if highest_candle_price < last_row['high']:
-        highest_candle_price = last_row['high']
-        
+
+    # pprint.pprint(data)
+    supertrend=Supertrend(data,atr_period,atr_multiplier)
+    macd = calculate_macd(data)
+
     trend_up=False
     trend_down=False
-
-    # print(data,supertrend,macd_data,highest_candle_price)
-
-    total_balance = 0.0
-
-    for balance in balances:
-        asset = balance['asset']
-        free = float(balance['free'])
-        locked = float(balance['locked'])
-        if free + locked > 0:
-            if asset == 'USDT':
-                total_balance += free + locked
-            else:
-                symbol = asset + 'USDT'
-                ticker = client.get_symbol_ticker(symbol=symbol)
-                price = float(ticker['price'])
-                total_balance += (free + locked) * price
     previous_supertrend = supertrend['Supertrend'][-2]
     current_supertrend = supertrend['Supertrend'][-1]
-    # print(previous_supertrend)
-    # print(current_supertrend)
+
+    if trading_variables.highest_candle_price < data['high'][-1]:
+       trading_variables.highest_candle_price = data['high'][-1]
+     
+
+    ema_200 = data['close'].ewm(span=200).mean()
+
     if previous_supertrend and current_supertrend == True:
-           
             trend_up=True
-        # print("trend UP")
-    elif previous_supertrend and current_supertrend == False:
-           
+            # print("trend UP")
+    elif current_supertrend == False :
+            # print("Trend DOWN")
             trend_down=True
-        # print("trend DOWN")
-    buy_percentage_of_trade = 0.3 * wallet
-    # buy_percentage_of_trade = 0.3 * total_balance
-
-    # print(f'Total account value in USDT: {total_balance:.2f}, 30% of it is: {buy_percentage_of_trade:.2f}, NUMBER OF BUYS = {num_buys}')
-
-    if   macd_data['MACD'][-1] > macd_data['Signal Line'][-1] and macd_data['MACD'][-2] <macd_data['Signal Line'][-2] :   ######macd_data['MACD'][-1] < 0 and macd_data['Signal Line'][-1] < 0 and
-
-        if num_buys==0 and trend_up == True and num_buys<1 : 
-
-            #########     my_order['price']     ###################
-            purchase_price = price          
-            # quantity = buy_percentage_of_trade/price(from order)
-            quantity = buy_percentage_of_trade/purchase_price
-            btc_bought += quantity
-            
-            num_buys+=1
-
-            ###### AFTER ORDER CREATE TAGRET PRICE
-            target_price = (1 + (profit_ratio/100)) * purchase_price
-            highest_candle_price = 0
-            
-            print(f"BUY SIGNAL number is:{num_buys}. Bought: {quantity:.6f} at the price of {purchase_price}")
-            
-            if trend_up  and num_buys<2:
-
-                #########     my_order['price']     ##################
-                purchase_price = price 
-                # quantity = buy_percentage_of_trade/price(from order)
-                # btc_bought += quantity
-                quantity = buy_percentage_of_trade/purchase_price
-                btc_bought += quantity
-
-                num_buys+=1
-                highest_candle_price = 0
-                target_price = (1 + (profit_ratio/100)) * purchase_price
-                print(f"BUY SIGNAL 2 number is:{num_buys}. Bought: {quantity:.6f} at the price of {purchase_price}")
-                ###### AFTER ORDER CREATE TAGRET PRICE
-                # target_price = (1 + (profit_ratio/100)) * purchase_price
-                
-
-
-        stop_loss = highest_candle_price - (percentage_of_stop_loss * highest_candle_price)
+  
         
+    trading_variables.buy_percentage_of_trade = 0.3 * trading_variables.wallet
+    if  macd['MACD'][-1] > macd['Signal Line'][-1] and macd['MACD'][-2] <macd['Signal Line'][-2] and kline['x']:
+        if trading_variables.num_buys==0 and trend_up == True and trading_variables.num_buys < 1: 
 
-    elif num_buys!=0 and ((price <= stop_loss) or (price >= target_price) or (previous_supertrend and current_supertrend == False)): ######(price >= target_price) 
-        print()
+                #########     my_order['price']     ###################
+                trading_variables.purchase_price = price
+                print(price)  
+                print(f"Purchase price was {trading_variables.purchase_price}")        
+                # quantity = buy_percentage_of_trade/price(from order)
+                trading_variables.quantity = trading_variables.buy_percentage_of_trade/trading_variables.purchase_price
+                trading_variables.btc_bought += trading_variables.quantity
+                
+                trading_variables.num_buys+=1
 
+                ###### AFTER ORDER CREATE TAGRET PRICE
+                trading_variables.target_price = (1 + (trading_variables.profit_ratio/100)) * trading_variables.purchase_price
+                trading_variables.highest_candle_price = 0
+                
+                print(f"BUY SIGNAL number is: {trading_variables.num_buys}. Bought: {trading_variables.quantity:.6f} at the price of {trading_variables.purchase_price} - The time was { data.iloc[-1].name}")
+                
+                if trend_up  and trading_variables.num_buys<2:
+
+                    #########     my_order['price']     ##################
+                    trading_variables.purchase_price = price 
+                    # quantity = buy_percentage_of_trade/price(from order)
+                    # btc_bought += quantity
+                    trading_variables.quantity = trading_variables.buy_percentage_of_trade/trading_variables.purchase_price
+                    trading_variables.btc_bought += trading_variables.quantity
+
+                    trading_variables.num_buys+=1
+                    trading_variables.highest_candle_price = 0
+                    trading_variables.target_price = (1 + (trading_variables.profit_ratio/100)) * trading_variables.purchase_price
+                    print(f"BUY SIGNAL 2 number is: {trading_variables.num_buys}. Bought: {trading_variables.quantity:.6f} at the price of {trading_variables.purchase_price} - The time was { data.iloc[-1].name}")                 
+                    print()                           
+                    print(f"𝕿𝖍𝖊 𝖓𝖚𝖒𝖇𝖊𝖗 𝖔𝖋 𝖙𝖍𝖊 𝖈𝖆𝖓𝖉𝖑𝖊 𝖎𝖘: {len(data)}")
+                          
+
+        trading_variables.stop_loss = trading_variables.highest_candle_price - (trading_variables.percentage_of_stop_loss * trading_variables.highest_candle_price)
+
+    # if kline['x'] and trading_variables.num_buys>0 and trading_variables.closed_candle_on_buy :
+    #          print(f"Data for {len(data)} was {data.iloc[len(data) - 1]}") 
+    #          trading_variables.closed_candle_on_buy  = False 
+
+        #  print(f"Will sell 70% of the account here: {price}.")    
+    if trading_variables.num_buys!=0 and ((price <= trading_variables.stop_loss) or (price >= trading_variables.target_price)  or (kline['x'] and trend_down) or price >= trading_variables.purchase_price + (trading_variables.purchase_price *  0.001))  : ## trading_variables.purchase_price or data['open'][-2]
+        print("Got here")
         sell_price = price
-        btc_sold = btc_bought
-        btc_bought = 0
+        btc_sold = trading_variables.btc_bought
+        trading_variables.btc_bought = 0
 
-        if (previous_supertrend and current_supertrend == False) and num_buys!=0:
-            if price > purchase_price:
+        if(price >= trading_variables.purchase_price + (trading_variables.purchase_price *  0.001)):
+
+            print(f"Will sell 70% of the account here: {sell_price}.") 
+
+            trading_variables.profit = (btc_sold*0.7) * (sell_price - trading_variables.purchase_price)
+            trading_variables.total_profit+=trading_variables.profit
+            trading_variables.count_wins+=1
+
+            print(f"Sold {(btc_sold)*0.7:.8f} BTC at {sell_price:.2f} USDT  for a profit of: {trading_variables.profit:.2f}. - Supertrend Succeded ") 
+
+            btc_sold -= btc_sold*0.7 
+            trading_variables.target_price = (0.0005 * sell_price)
+            print (f"TERGET PRICE IS --------------- {trading_variables.target_price}")
+        if ( trend_down and kline['x']) and trading_variables.num_buys!=0:
+            if price > trading_variables.purchase_price:
 
                 #########     my_order['price']     ##################
 
                 print("Add sell order")
-                profit = btc_sold * (sell_price - purchase_price)
-                count_wins+=1
-            
-                print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT  for a profit of: {profit:.2f}. - Supertrend Succeded ")
+                trading_variables.profit = btc_sold * (sell_price - trading_variables.purchase_price)
+                trading_variables.total_profit+=trading_variables.profit
+                trading_variables.count_wins+=1
+
+                print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT  for a profit of: {trading_variables.profit:.2f}. - Supertrend Succeded ")
                 # trade.append({'date':data.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
             else:
-                print("Add sell order")
-                loss = btc_sold * (purchase_price - sell_price)
-                count_loss+=1
 
-                print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a loss of {loss:.2f}. - Supertrend failed")
-                # trade.append({'date':data.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
-             
-        if price>= target_price:
+                print("Add sell order")
+                trading_variables.loss = btc_sold * (trading_variables.purchase_price - sell_price)
+                trading_variables.count_loss+=1
+
+                print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a loss of {trading_variables.loss:.2f}. - Supertrend failed")
+
+        if price>= trading_variables.target_price:
             #########     my_order['price']     ##################
             print("ADD SELL ORDER")
-            profit = btc_sold * (sell_price - purchase_price)
-           
+            trading_variables.profit = btc_sold * (sell_price - trading_variables.purchase_price)
+            trading_variables.total_profit+=trading_variables.profit
 
-            count_wins+=1
+            trading_variables.count_wins+=1
 
-            print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a profit of: {profit:.2f}. - Reached 1.5 profit")
+            print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a profit of: {trading_variables.profit:.2f}. - Reached 1.5 profit")
             # trade.append({'date':data.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
             
-        elif price<stop_loss:
+        elif price<trading_variables.stop_loss:
 
             print("ADD SELL ORDER")
-            loss = btc_sold * (purchase_price - sell_price)
-            count_loss+=1
+            trading_variables.loss = btc_sold * (trading_variables.purchase_price - sell_price)
+            trading_variables.count_loss+=1
 
-            print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a loss of {loss:.2f}. - Activated Stop Loss")
+            print(f"Sold {btc_sold:.8f} BTC at {sell_price:.2f} USDT for a loss of {trading_variables.loss:.2f}. - Activated Stop Loss")
             # trade.append({'date':data.index[i], 'side':'sell', 'price': sell_price, 'amount': num_buys*purchase_amount, 'usdt':btc_sold*sell_price, 'wallet':wallet})
+            
+        
+           
 
-       
-
-        num_buys=0
-        highest_candle_price=0
+        # trading_variables.total_profit+=trading_variables.profit
+        trading_variables.total_loss+=trading_variables.loss
+        trading_variables.num_buys=0
+        trading_variables.profit=0
+        trading_variables.loss=0
+        trading_variables.highest_candle_price=0
+        trading_variables.count_for_shortage=0
         print()
-        pprint.pprint(f"Total P {profit:.2f} with {count_wins} Wins")
-        pprint.pprint(f"Total L {loss:.2f} with {count_loss} Loss")
+        print(f"Total P {trading_variables.total_profit:.2f} with {trading_variables.count_wins} Wins")
+        print(f"Total L {trading_variables.total_loss:.2f} with {trading_variables.count_loss} Loss")
         print()
 ws = websocket.WebSocketApp(SOCKET, on_open=on_open, on_close=on_close, on_message=on_message)
 ws.run_forever()
+
