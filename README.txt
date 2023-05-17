@@ -38,7 +38,9 @@ By default, the Trading Bot is set to trade with the BTC/TUSD symbol. If you wis
 Time Frame
 The Trading Bot operates on a specific time frame, which determines the duration of each candlestick used for analysis. You have the option to customize the time frame based on your trading strategy. To do this, modify the corresponding parameter within the code of the selected file.
 
-Disclaimer
+--------------------------------------------------------------------------------------
+
+DISCLAIMER
 IMPORTANT: The Trading Bot is a Prototype. Use at Your Own Risk.
 
 The Trading Bot provided in this project is intended for educational and experimental purposes only. It is a prototype designed to demonstrate the concept of automated trading and algorithmic strategies. By using the Trading Bot, you acknowledge and accept the following:
