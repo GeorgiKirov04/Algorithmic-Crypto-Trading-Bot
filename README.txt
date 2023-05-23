@@ -12,7 +12,7 @@ Locate the file named credits.py in the folder and open it.
 Add your API and API secret keys to the designated fields in the file. These keys are required to connect to the trading platform and execute trades. Make sure to obtain valid keys from Binance.
 Save and close the credits.py file.
 
-# Step 3: Installation
+#Step 3: Installation
 Open the terminal or command prompt in your development environment.
 
 Run the following command to install the required dependencies:
