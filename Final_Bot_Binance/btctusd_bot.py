@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 # import ccxt
 # import time
-api_key = credits.apy_key
+api_key = credits.api_key
 api_secret = credits.api_secret
 
 client = Client(api_key, api_secret)
@@ -196,7 +196,7 @@ def on_message(ws,message):
   
         
     trading_variables.buy_percentage_of_trade = 0.3 * wallet_balance
-    if  macd['MACD'][-1] > macd['Signal Line'][-1] and macd['MACD'][-2] <macd['Signal Line'][-2] and kline['x']:
+    if  macd['MACD'][-1] > macd['Signal Line'][-1] and macd['MACD'][-2] <macd['Signal Line'][-2]:
         if trading_variables.num_buys==0 and trend_up == True and trading_variables.num_buys < 1: 
 
                 #########     my_order['price']     ###################
@@ -274,7 +274,7 @@ def on_message(ws,message):
 
                 trading_variables.trade.append({'date':data.iloc[-1].name, 'side':'BUY', 'price': sell_price, 'amount': trading_variables.num_buys*float(order['executedQty']), 'usdt':btc_sold*sell_price, 'wallet':trading_variables.wallet})
                 btc_sold -= float(order['executedQty'])
-           
+                pprint.pprint(trading_variables.trade)
             if ( trend_down and kline['x']) and trading_variables.num_buys!=0:
                 if price > trading_variables.purchase_price:
 
@@ -294,7 +294,7 @@ def on_message(ws,message):
                     trading_variables.trade.append({'date':data.iloc[-1].name, 'side':'SELL', 'price': sell_price, 'amount': trading_variables.num_buys*float(order['executedQty']), 'usdt':btc_sold*sell_price, 'wallet':trading_variables.wallet})
                     
                     btc_sold -= float(order['executedQty'])
-
+                    pprint.pprint(trading_variables.trade)
                 else:
 
                     order = client.create_order(
@@ -313,7 +313,7 @@ def on_message(ws,message):
                     trading_variables.trade.append({'date':data.iloc[-1].name, 'side':'SELL', 'price': sell_price, 'amount': trading_variables.num_buys*float(order['executedQty']), 'usdt':btc_sold*sell_price, 'wallet':trading_variables.wallet})
 
                     btc_sold-=float(order['executedQty'])
-
+                    pprint.pprint(trading_variables.trade)
             if price>= trading_variables.target_price:
 
                 order = client.create_order(
@@ -350,7 +350,7 @@ def on_message(ws,message):
                 trading_variables.trade.append({'date':data.iloc[-1].name, 'side':'SELL', 'price': sell_price, 'amount': trading_variables.num_buys*float(order['executedQty']), 'usdt':btc_sold*sell_price, 'wallet':trading_variables.wallet})
 
                 btc_sold-=float(order['executedQty'])
-            
+                pprint.pprint(trading_variables.trade)
            
 
         # trading_variables.total_profit+=trading_variables.profit
