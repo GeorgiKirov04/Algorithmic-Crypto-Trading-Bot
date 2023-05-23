@@ -7,12 +7,12 @@ When you download all the folders, you must open the folder called: "Final_Bot_B
 There you will find the following files: 
 "btctusd_bot.py", "rewriting_the_code.py", "credits.py" and "requierements.txt"
 
-Step 2: API Configuration
+# Step 2: API Configuration
 Locate the file named credits.py in the folder and open it.
 Add your API and API secret keys to the designated fields in the file. These keys are required to connect to the trading platform and execute trades. Make sure to obtain valid keys from Binance.
 Save and close the credits.py file.
 
-Step 3: Installation
+# Step 3: Installation
 Open the terminal or command prompt in your development environment.
 
 Run the following command to install the required dependencies:
