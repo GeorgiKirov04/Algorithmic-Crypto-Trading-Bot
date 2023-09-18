@@ -33,8 +33,8 @@ For real trading with actual funds, open btctusd_bot.py.
 Before running the chosen file, ensure you have completed Step 2 and configured the API keys in the credits.py file.
 
 Run the selected file. You can use the following command:
-python rewriting_the_code.py or python btctusd.py
-or just press Ctrl + f5
+python rewriting_the_code.py 
+or just press Ctrl + f5, while you have the script opened
 
 The program will now start, and a message stating "Connection opened" will appear in the console.
 The bot will continuously monitor the market and execute trades when the predefined criteria are met.
